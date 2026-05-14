@@ -26,6 +26,7 @@ struct HomeView: View {
             }
             .padding(.horizontal, AppTheme.padding)
             .padding(.top, AppTheme.padding)
+            .iPadConstrained()
         }
         .navigationTitle("Good Morning")
         .navigationBarTitleDisplayMode(.large)
@@ -116,9 +117,9 @@ struct HomeView: View {
                     Text(routine.name)
                         .font(AppTheme.title)
                         .foregroundColor(AppTheme.primaryText)
-                        .lineLimit(2)
+                        .lineLimit(4)
                         .multilineTextAlignment(.leading)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                 }
                 
                 Spacer()
@@ -156,7 +157,7 @@ struct HomeView: View {
             .padding(.vertical, AppTheme.paddingSmall)
             
             // Start button with integrated routine selector
-            if !routineManager.routines.isEmpty {
+            if !routineManager.selectedRoutines.isEmpty {
                 HStack(spacing: 0) {
                     // Left side - Start button (starts the displayed routine)
                     Button {
@@ -183,15 +184,15 @@ struct HomeView: View {
                     
                     // Right side - Dropdown menu
                     Menu {
-                        ForEach(routineManager.routines) { menuRoutine in
+                        ForEach(routineManager.selectedRoutines) { menuRoutine in
                             Button {
                                 startRoutine(menuRoutine)
                             } label: {
                                 HStack {
                                     Text(menuRoutine.name)
-                                        .lineLimit(2)
+                                        .lineLimit(4)
                                         .multilineTextAlignment(.leading)
-                                        .minimumScaleFactor(0.7)
+                                        .minimumScaleFactor(0.6)
                                     Spacer()
                                     if menuRoutine.alarmEnabled {
                                         Image(systemName: "alarm.fill")
@@ -275,7 +276,9 @@ struct HomeView: View {
                 .multilineTextAlignment(.center)
             
             Button {
-                selectedTab = .routines
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedTab = .routines
+                }
             } label: {
                 HStack {
                     Image(systemName: "plus")

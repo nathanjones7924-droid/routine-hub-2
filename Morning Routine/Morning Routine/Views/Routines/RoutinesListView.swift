@@ -5,6 +5,7 @@ struct RoutinesListView: View {
     @EnvironmentObject var routineManager: RoutineManager
     @EnvironmentObject var alarmManager: AlarmManager
     @EnvironmentObject var locationManager: LocationManager
+    @EnvironmentObject var settingsManager: SettingsManager
     
     @State private var showingAddRoutine = false
     @State private var routineToEdit: Routine?
@@ -24,6 +25,7 @@ struct RoutinesListView: View {
             }
             .padding(.horizontal, AppTheme.padding)
             .padding(.top, AppTheme.padding)
+            .iPadConstrained()
         }
         .navigationTitle("Routines")
         .navigationBarTitleDisplayMode(.large)
@@ -39,6 +41,12 @@ struct RoutinesListView: View {
                 .environmentObject(alarmManager)
                 .environmentObject(locationManager)
         }
+        .animation(.none, value: settingsManager.themeAccentHue)
+        .animation(.none, value: settingsManager.themeUseGrayscale)
+        .animation(.none, value: settingsManager.backgroundHue)
+        .animation(.none, value: settingsManager.backgroundUseGrayscale)
+        .animation(.none, value: settingsManager.boxBackgroundHue)
+        .animation(.none, value: settingsManager.boxBackgroundUseGrayscale)
     }
     
     // MARK: - Add Routine Button
@@ -123,6 +131,7 @@ struct RoutinesListView: View {
                 }
                 .onTapGesture {
                     routineManager.toggleRoutine(routine)
+                    alarmManager.selectedRoutineIds = routineManager.selectedRoutineIds
                     
                     // Update alarm scheduling
                     Task {
@@ -135,11 +144,11 @@ struct RoutinesListView: View {
                     Text(routine.name)
                         .font(AppTheme.headline)
                         .foregroundColor(AppTheme.primaryText)
-                        .lineLimit(2)
+                        .lineLimit(6)
                         .multilineTextAlignment(.leading)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                     
-                    HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Label("\(routine.actions.count) actions", systemImage: "checkmark.circle")
                             .lineLimit(2)
                             .minimumScaleFactor(0.7)
@@ -220,4 +229,6 @@ struct RoutinesListView: View {
     RoutinesListView()
         .environmentObject(RoutineManager())
         .environmentObject(AlarmManager())
+    .environmentObject(LocationManager())
+    .environmentObject(SettingsManager())
 }

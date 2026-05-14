@@ -80,11 +80,32 @@ class TimerManager: ObservableObject {
         return actions[nextIndex]
     }
     
-    /// Whether the red filter should be shown (current or next action has it enabled)
+    /// Whether the red filter should be shown
+    /// Shows filter if current action has it, OR if we're in a sequence where the next action has it
+    /// and the previous action also had it (continuous sequence)
     var shouldShowRedFilter: Bool {
         let currentHasFilter = currentAction?.useRedFilter ?? false
+        
+        // If current action has filter, always show
+        if currentHasFilter {
+            return true
+        }
+        
+        // Check if we're between red filter actions (previous had it AND next has it)
+        // This keeps the filter on during transitions between consecutive red filter actions
+        let previousHasFilter = previousAction?.useRedFilter ?? false
         let nextHasFilter = nextAction?.useRedFilter ?? false
-        return currentHasFilter || nextHasFilter
+        
+        // Show filter if next action has it (to prepare user)
+        // OR if we just finished a red filter action and next one also has it
+        return nextHasFilter || (previousHasFilter && !isRunning && hasNextAction && nextHasFilter)
+    }
+    
+    /// The previous action before the current one
+    var previousAction: RoutineAction? {
+        let prevIndex = currentActionIndex - 1
+        guard prevIndex >= 0 else { return nil }
+        return actions[prevIndex]
     }
     
     // MARK: - Timer Control

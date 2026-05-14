@@ -60,15 +60,21 @@ class RoutineManager: ObservableObject {
     /// Update alarm times for all routines that have "wake up with sun" enabled
     /// This should be called when sunrise time changes (e.g., new day, location change)
     func updateSunriseAlarmTimes(sunriseTime: Date) {
+        updateSunEventAlarmTimes(sunriseTime: sunriseTime, sunsetTime: locationManager?.sunsetTime)
+    }
+
+    /// Update alarm times for all routines that have sunrise/sunset-based alarms enabled
+    func updateSunEventAlarmTimes(sunriseTime: Date?, sunsetTime: Date?) {
         let calendar = Calendar.current
         var hasChanges = false
         
-        // Get the minutes offset from sunrise (negative = before, positive = after)
-        let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? 5
+        // Get offsets from settings
+        let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? -3
+        let minutesFromSunset = settingsManager?.minutesFromSunset ?? -3
         
         for index in routines.indices {
-            if routines[index].wakeUpWithSun && routines[index].alarmEnabled {
-                // Calculate alarm time based on settings
+            if routines[index].wakeUpWithSun && routines[index].alarmEnabled, let sunriseTime {
+                // Sunrise-based alarm time
                 if let newAlarmTime = calendar.date(byAdding: .minute, value: minutesBeforeSunrise, to: sunriseTime) {
                     let oldTime = routines[index].alarmTime
                     let oldHour = calendar.component(.hour, from: oldTime)
@@ -94,6 +100,24 @@ class RoutineManager: ObservableObject {
                         ])
                     }
                 }
+            } else if routines[index].goToBedWithSun && routines[index].alarmEnabled, let sunsetTime {
+                // Sunset-based alarm time
+                if let newAlarmTime = calendar.date(byAdding: .minute, value: minutesFromSunset, to: sunsetTime) {
+                    let oldTime = routines[index].alarmTime
+                    let oldHour = calendar.component(.hour, from: oldTime)
+                    let oldMinute = calendar.component(.minute, from: oldTime)
+                    let newHour = calendar.component(.hour, from: newAlarmTime)
+                    let newMinute = calendar.component(.minute, from: newAlarmTime)
+
+                    if oldHour != newHour || oldMinute != newMinute {
+                        routines[index].alarmTime = newAlarmTime
+                        hasChanges = true
+
+                        let formatter = DateFormatter()
+                        formatter.timeStyle = .short
+                        print("[RoutineManager] 🌇 Updated alarm time for '\(routines[index].name)': \(formatter.string(from: oldTime)) → \(formatter.string(from: newAlarmTime))")
+                    }
+                }
             }
         }
         
@@ -109,11 +133,9 @@ class RoutineManager: ObservableObject {
     /// Add a new routine
     func addRoutine(_ routine: Routine) {
         routines.append(routine)
-        
-        // Auto-select if it's the first routine
-        if routines.count == 1 {
-            selectRoutine(routine)
-        }
+		
+        // Auto-select newly created routine
+        selectRoutine(routine)
         
         saveRoutines()
         

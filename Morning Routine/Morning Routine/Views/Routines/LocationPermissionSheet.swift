@@ -118,6 +118,7 @@ struct LocationPermissionSheet: View {
                 .padding(AppTheme.padding)
             }
             .navigationBarTitleDisplayMode(.inline)
+            .tint(AppTheme.navigationBarAccentColor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {

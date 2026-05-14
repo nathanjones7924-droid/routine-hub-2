@@ -68,6 +68,24 @@ class AlarmManager: ObservableObject {
                 isAlarmBeeping = false
                 // Don't clear triggeredRoutine here - let it persist so the UI can show the routine
             }
+
+            /// Prevent alarm beeping for a specific routine for a short window
+            func suppressAlarmBeep(for routineId: UUID, duration: TimeInterval = 60) {
+                suppressBeepRoutineId = routineId
+                suppressBeepUntil = Date().addingTimeInterval(duration)
+            }
+
+            private func shouldSuppressBeep(for routineId: UUID, now: Date) -> Bool {
+                guard suppressBeepRoutineId == routineId, let suppressUntil = suppressBeepUntil else {
+                    return false
+                }
+                if suppressUntil > now {
+                    return true
+                }
+                suppressBeepRoutineId = nil
+                suppressBeepUntil = nil
+                return false
+            }
         private var timeLoggerTimer: Timer?
     private var lastTriggeredMinute: (hour: Int, minute: Int, routineId: UUID)? = nil
     // MARK: - Published Properties
@@ -82,6 +100,8 @@ class AlarmManager: ObservableObject {
     
     private let notificationCenter = UNUserNotificationCenter.current()
     private let alarmCategoryIdentifier = "MORNING_ROUTINE_ALARM"
+    private var suppressBeepUntil: Date?
+    private var suppressBeepRoutineId: UUID?
     weak var locationManager: LocationManager?
     weak var settingsManager: SettingsManager?
     
@@ -137,6 +157,13 @@ class AlarmManager: ObservableObject {
         let selectedRoutines = routines.filter { selectedRoutineIds.contains($0.id) }
         
         for routine in selectedRoutines where routine.alarmEnabled {
+            // Skip if today's weekday is not in the routine's selected days
+            // Calendar weekday: 1=Sunday, 2=Monday, ... 7=Saturday (matches our model)
+            let todayWeekday = calendar.component(.weekday, from: now)
+            if !routine.selectedDays.contains(todayWeekday) {
+                continue
+            }
+            
             // Skip if alarm is already beeping for this routine
             if isAlarmBeeping && triggeredRoutine?.id == routine.id {
                 print("[AlarmManager] Skipping routine \(routine.name) - alarm already beeping")
@@ -151,16 +178,31 @@ class AlarmManager: ObservableObject {
                 return
             }
             
-            // Calculate alarm time - if wakeUpWithSun is enabled, recalculate daily based on sunrise
+            // Calculate alarm time - if sun-based mode is enabled, recalculate daily
             let alarmTime: Date
-            var usingSunrise = false
+            var usingSunEvent = false
+            var sunEventName = ""
             
             if routine.wakeUpWithSun, let sunriseTime = locationManager?.sunriseTime {
-                // Recalculate alarm time daily: use configured minutes before today's sunrise
-                let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? 5
-                if let sunriseAlarmTime = calendar.date(byAdding: .minute, value: -minutesBeforeSunrise, to: sunriseTime) {
+                // Recalculate alarm time daily: apply configured offset from sunrise
+                let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? -3
+                if let sunriseAlarmTime = calendar.date(byAdding: .minute, value: minutesBeforeSunrise, to: sunriseTime) {
                     alarmTime = sunriseAlarmTime
-                    usingSunrise = true
+                    usingSunEvent = true
+                    sunEventName = "sunrise"
+                } else {
+                    // Fallback to stored alarm time if calculation fails
+                    let routineHour = calendar.component(.hour, from: routine.alarmTime)
+                    let routineMinute = calendar.component(.minute, from: routine.alarmTime)
+                    alarmTime = calendar.date(bySettingHour: routineHour, minute: routineMinute, second: 0, of: now) ?? routine.alarmTime
+                }
+            } else if routine.goToBedWithSun, let sunsetTime = locationManager?.sunsetTime {
+                // Recalculate alarm time daily: apply configured offset from sunset
+                let minutesFromSunset = settingsManager?.minutesFromSunset ?? -3
+                if let sunsetAlarmTime = calendar.date(byAdding: .minute, value: minutesFromSunset, to: sunsetTime) {
+                    alarmTime = sunsetAlarmTime
+                    usingSunEvent = true
+                    sunEventName = "sunset"
                 } else {
                     // Fallback to stored alarm time if calculation fails
                     let routineHour = calendar.component(.hour, from: routine.alarmTime)
@@ -192,20 +234,18 @@ class AlarmManager: ObservableObject {
             if nowHour == alarmHour && nowMinute == alarmMinute {
                 print("[AlarmManager] ✅ TIME MATCHED for routine '\(routine.name)'!")
                 // Only trigger if we haven't already triggered for this routine in this minute
-                if !isAlarmBeeping || triggeredRoutine?.id != routine.id {
-                    if usingSunrise {
-                        print("[AlarmManager] ⏰ Sunrise-based alarm triggered for routine: \(routine.name) (5 minutes before sunrise)")
+                if triggeredRoutine?.id != routine.id {
+                    if usingSunEvent {
+                        print("[AlarmManager] ⏰ \(sunEventName.capitalized)-based alarm triggered for routine: \(routine.name)")
                     } else {
-                        print("[AlarmManager] ⏰ Alarm time matched for routine: \(routine.name). Playing beep and starting routine.")
+                        print("[AlarmManager] ⏰ Alarm time matched for routine: \(routine.name). Opening routine.")
                     }
-                    print("[AlarmManager] Calling playAlarmBeep()...")
-                    playAlarmBeep()
+                    // Just set the triggered routine - the notification handles the sound
                     triggeredRoutine = routine
                     // Remember that we triggered for this routine in this minute
                     lastTriggeredMinute = (hour: nowHour, minute: nowMinute, routineId: routine.id)
-                    print("[AlarmManager] Alarm beep started. isAlarmBeeping: \(isAlarmBeeping)")
                 } else {
-                    print("[AlarmManager] ⚠️ Alarm already beeping for this routine, skipping")
+                    print("[AlarmManager] ⚠️ Already triggered for this routine, skipping")
                 }
             } else {
                 // Clear the last triggered minute when we move to a new minute
@@ -302,42 +342,63 @@ class AlarmManager: ObservableObject {
         var alarmDate: Date
         
         if routine.wakeUpWithSun, let sunriseTime = locationManager?.sunriseTime {
-            // Use configured minutes offset from sunrise (negative = before)
-            let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? -5
+            // Use configured minutes offset from sunrise (negative = before, positive = after)
+            let minutesBeforeSunrise = settingsManager?.minutesBeforeSunrise ?? -3
             alarmDate = Calendar.current.date(byAdding: .minute, value: minutesBeforeSunrise, to: sunriseTime) ?? routine.alarmTime
             print("[AlarmManager] Scheduling sunrise-based alarm: \(minutesBeforeSunrise) min from sunrise")
+        } else if routine.goToBedWithSun, let sunsetTime = locationManager?.sunsetTime {
+            // Use configured minutes offset from sunset (negative = before, positive = after)
+            let minutesFromSunset = settingsManager?.minutesFromSunset ?? -3
+            alarmDate = Calendar.current.date(byAdding: .minute, value: minutesFromSunset, to: sunsetTime) ?? routine.alarmTime
+            print("[AlarmManager] Scheduling sunset-based alarm: \(minutesFromSunset) min from sunset")
         } else {
             alarmDate = routine.alarmTime
         }
         
-        // Create date components for the alarm time (daily repeating)
+        // Schedule a separate notification for each selected day
         let calendar = Calendar.current
-        var dateComponents = DateComponents()
-        dateComponents.hour = calendar.component(.hour, from: alarmDate)
-        dateComponents.minute = calendar.component(.minute, from: alarmDate)
+        let hour = calendar.component(.hour, from: alarmDate)
+        let minute = calendar.component(.minute, from: alarmDate)
         
-        // Create trigger that repeats daily
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        let dayNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         
-        let request = UNNotificationRequest(
-            identifier: alarmIdentifier(for: routine),
-            content: content,
-            trigger: trigger
-        )
+        for day in routine.selectedDays {
+            var dateComponents = DateComponents()
+            dateComponents.hour = hour
+            dateComponents.minute = minute
+            dateComponents.weekday = day // 1=Sunday ... 7=Saturday
+            
+            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+            
+            let request = UNNotificationRequest(
+                identifier: "\(alarmIdentifier(for: routine))_day\(day)",
+                content: content,
+                trigger: trigger
+            )
+            
+            do {
+                try await notificationCenter.add(request)
+                let dayName = day >= 1 && day <= 7 ? dayNames[day] : "??"
+                print("[AlarmManager] ✅ Alarm scheduled for routine '\(routine.name)' at \(hour):\(String(format: "%02d", minute)) on \(dayName)")
+            } catch {
+                print("[AlarmManager] ❌ Error scheduling alarm for day \(day): \(error)")
+            }
+        }
         
-        do {
-            try await notificationCenter.add(request)
-            let formatter = DateFormatter()
-            formatter.timeStyle = .short
-            print("[AlarmManager] ✅ Alarm scheduled for routine '\(routine.name)' at \(formatter.string(from: alarmDate)) (repeats daily)")
-        } catch {
-            print("[AlarmManager] ❌ Error scheduling alarm: \(error)")
+        if routine.selectedDays.isEmpty {
+            print("[AlarmManager] ⚠️ No days selected for routine '\(routine.name)', no alarms scheduled")
         }
     }
     
     /// Cancel an alarm for a routine
     func cancelAlarm(for routine: Routine) async {
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: [alarmIdentifier(for: routine)])
+        // Cancel the base identifier plus all day-specific identifiers
+        let baseId = alarmIdentifier(for: routine)
+        var ids = [baseId]
+        for day in 1...7 {
+            ids.append("\(baseId)_day\(day)")
+        }
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
         print("[AlarmManager] Cancelled alarm for routine: \(routine.name)")
     }
     
@@ -365,8 +426,12 @@ class AlarmManager: ObservableObject {
     
     /// Reschedule sunrise alarms (call this when location updates)
     func rescheduleSunriseAlarms(routines: [Routine]) async {
-        // Reschedule sunrise alarms for all selected routines
-        let selectedRoutines = routines.filter { selectedRoutineIds.contains($0.id) && $0.alarmEnabled && $0.wakeUpWithSun }
+        // Reschedule all sun-based alarms (sunrise and sunset) for selected routines
+        let selectedRoutines = routines.filter {
+            selectedRoutineIds.contains($0.id)
+                && $0.alarmEnabled
+                && ($0.wakeUpWithSun || $0.goToBedWithSun)
+        }
         for routine in selectedRoutines {
             await scheduleAlarm(for: routine)
         }

@@ -55,7 +55,7 @@ struct ActionEditorView: View {
                 AppTheme.backgroundGradient
                     .ignoresSafeArea()
                 VStack {
-                    ScrollView {
+                    ScrollView(.vertical, showsIndicators: true) {
                         VStack(spacing: AppTheme.paddingLarge) {
                             // Action name
                             nameSection
@@ -68,12 +68,14 @@ struct ActionEditorView: View {
                             Spacer(minLength: 50)
                         }
                         .padding(AppTheme.padding)
+                        .iPadConstrained()
                     }
                 }
                 .dismissKeyboardOnTap()
             }
             .navigationTitle(isEditing ? "Edit Action" : "New Action")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(AppTheme.navigationBarAccentColor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -99,9 +101,17 @@ struct ActionEditorView: View {
                 .font(AppTheme.headline)
                 .foregroundColor(AppTheme.primaryText)
             
-            TextField("e.g., Brush Teeth, Meditate, Exercise", text: $name)
+            TextField(
+                "",
+                text: $name,
+                prompt: Text("e.g., Brush Teeth, Meditate, Exercise")
+                    .foregroundColor(AppTheme.secondaryText),
+                axis: .vertical
+            )
+                .lineLimit(1...8)
                 .font(AppTheme.body)
-                .foregroundColor(AppTheme.primaryText)
+                .foregroundColor(AppTheme.controlTextColor)
+                .tint(AppTheme.controlAccentColor)
                 .padding()
                 .background(AppTheme.cardBackground)
                 .cornerRadius(AppTheme.cornerRadius)
@@ -127,7 +137,7 @@ struct ActionEditorView: View {
                     
                     Text(formattedDuration)
                         .font(AppTheme.timerFont)
-                        .foregroundColor(AppTheme.primaryColor)
+                        .foregroundColor(AppTheme.backgroundTextColor)
                     
                     Spacer()
                 }
@@ -143,6 +153,9 @@ struct ActionEditorView: View {
                             }
                         }
                         .pickerStyle(.wheel)
+                        .tint(AppTheme.controlAccentColor)
+                        .colorMultiply(AppTheme.controlTextColor)
+                        .environment(\.colorScheme, AppTheme.controlColorScheme)
                         .frame(width: 80)
                         .clipped()
                         
@@ -164,6 +177,9 @@ struct ActionEditorView: View {
                             }
                         }
                         .pickerStyle(.wheel)
+                        .tint(AppTheme.controlAccentColor)
+                        .colorMultiply(AppTheme.controlTextColor)
+                        .environment(\.colorScheme, AppTheme.controlColorScheme)
                         .frame(width: 80)
                         .clipped()
                         
@@ -185,6 +201,9 @@ struct ActionEditorView: View {
                             }
                         }
                         .pickerStyle(.wheel)
+                        .tint(AppTheme.controlAccentColor)
+                        .colorMultiply(AppTheme.controlTextColor)
+                        .environment(\.colorScheme, AppTheme.controlColorScheme)
                         .frame(width: 80)
                         .clipped()
                         
@@ -254,18 +273,18 @@ struct ActionEditorView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "bell.fill")
                             .font(.system(size: 18))
-                            .foregroundColor(isAlarmEnabled ? AppTheme.primaryColor : AppTheme.secondaryText)
+                            .foregroundColor(isAlarmEnabled ? AppTheme.controlAccentColor : AppTheme.secondaryText)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(isAlarmEnabled ? "Alarm Enabled" : "Alarm Disabled")
                                 .font(AppTheme.body)
-                                .foregroundColor(AppTheme.primaryText)
+                                .foregroundColor(AppTheme.controlTextColor)
                             Text(isAlarmEnabled ? "Notification will fire when this action starts" : "This action won't trigger a notification")
                                 .font(AppTheme.caption)
                                 .foregroundColor(AppTheme.secondaryText)
                         }
                     }
                 }
-                .tint(AppTheme.primaryColor)
+                .toggleStyle(AppThemeToggleStyle())
                 .padding()
                 
                 // Loud/Quiet toggle - only show when alarm is enabled
@@ -281,14 +300,14 @@ struct ActionEditorView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(useLoudAlarm ? "Loud Alarm" : "Quiet Beep")
                                     .font(AppTheme.body)
-                                    .foregroundColor(AppTheme.primaryText)
+                                    .foregroundColor(AppTheme.controlTextColor)
                                 Text(useLoudAlarm ? "Wake-up alarm that repeats until dismissed" : "Soft beep notification")
                                     .font(AppTheme.caption)
                                     .foregroundColor(AppTheme.secondaryText)
                             }
                         }
                     }
-                    .tint(.orange)
+                    .toggleStyle(AppThemeToggleStyle())
                     .padding()
                 }
             }
@@ -329,14 +348,14 @@ struct ActionEditorView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Red Filter During Action")
                                 .font(AppTheme.body)
-                                .foregroundColor(AppTheme.primaryText)
+                                .foregroundColor(AppTheme.controlTextColor)
                             Text("Shows a red overlay to reduce blue light")
                                 .font(AppTheme.caption)
                                 .foregroundColor(AppTheme.secondaryText)
                         }
                     }
                 }
-                .tint(AppTheme.primaryColor)
+                .toggleStyle(AppThemeToggleStyle())
                 .padding()
             }
             .background(AppTheme.cardBackground)

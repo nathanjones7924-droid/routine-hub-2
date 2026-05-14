@@ -80,18 +80,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         // Check if it's an alarm notification
         if notification.request.content.categoryIdentifier == "MORNING_ROUTINE_ALARM" {
-            // Start beeping immediately when alarm fires while app is open
+            // When alarm fires while app is in foreground, just open the routine directly
             if let routineIdString = notification.request.content.userInfo["routineId"] as? String,
                let routineId = UUID(uuidString: routineIdString) {
                 Task { @MainActor in
-                    // Only trigger if this is the selected routine
                     if let alarmManager = AppDelegate.alarmManager,
                        let routineManager = AppDelegate.routineManager,
-                       routineManager.selectedRoutineId == routineId,
+                       routineManager.selectedRoutineIds.contains(routineId),
                        let routine = routineManager.routines.first(where: { $0.id == routineId }) {
-                        print("[AppDelegate] Starting alarm beep for routine: \(routine.name)")
+                        print("[AppDelegate] Alarm fired in foreground for routine: \(routine.name) - opening routine directly")
                         alarmManager.triggeredRoutine = routine
-                        alarmManager.playAlarmBeep()
                     } else {
                         print("[AppDelegate] Alarm notification ignored - routine is not selected")
                     }
@@ -130,8 +128,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 
                 Task { @MainActor in
                     // Only trigger if this is the selected routine
-                    guard let routineManager = AppDelegate.routineManager,
-                          routineManager.selectedRoutineId == routineId,
+                    guard let alarmManager = AppDelegate.alarmManager,
+                          let routineManager = AppDelegate.routineManager,
+                          routineManager.selectedRoutineIds.contains(routineId),
                           let routine = routineManager.routines.first(where: { $0.id == routineId }) else {
                         print("[AppDelegate] Alarm notification ignored - routine is not selected")
                         completionHandler()
@@ -144,19 +143,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     switch response.actionIdentifier {
                     case "START_ROUTINE":
                         print("[AppDelegate] User chose to start routine")
-                        AppDelegate.alarmManager?.triggeredRoutine = routine
-                        AppDelegate.alarmManager?.playAlarmBeep()
+                        alarmManager.triggeredRoutine = routine
                         
                     case "SNOOZE":
                         print("[AppDelegate] User chose to snooze")
                         // Schedule a new notification in 5 minutes
-                        await AppDelegate.alarmManager?.snoozeAlarm(for: routine)
+                        await alarmManager.snoozeAlarm(for: routine)
                         
                     case UNNotificationDefaultActionIdentifier:
                         // User tapped the notification itself
-                        print("[AppDelegate] User tapped notification - starting alarm beep")
-                        AppDelegate.alarmManager?.triggeredRoutine = routine
-                        AppDelegate.alarmManager?.playAlarmBeep()
+                        print("[AppDelegate] User tapped notification - opening routine directly")
+                        alarmManager.triggeredRoutine = routine
                         
                     default:
                         break
@@ -191,19 +188,23 @@ struct Morning_RoutineApp: App {
     @StateObject private var timerManager = TimerManager()
     @StateObject private var locationManager = LocationManager()
     @StateObject private var settingsManager = SettingsManager()
-    
-    init() {
-        // Configure navigation bar appearance for dark mode
+
+    private func applyNavigationBarAppearance() {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(red: 0.08, green: 0.08, blue: 0.10, alpha: 1.0)
-        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-        
-        UINavigationBar.appearance().standardAppearance = appearance
-        UINavigationBar.appearance().compactAppearance = appearance
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-        UINavigationBar.appearance().tintColor = UIColor(red: 0.91, green: 0.36, blue: 0.02, alpha: 1.0)
+        appearance.backgroundColor = UIColor(AppTheme.navigationBarBackgroundColor)
+        appearance.titleTextAttributes = [.foregroundColor: UIColor(AppTheme.navigationBarTextColor)]
+        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor(AppTheme.navigationBarTextColor)]
+
+        let navigationBarAppearance = UINavigationBar.appearance()
+        navigationBarAppearance.standardAppearance = appearance
+        navigationBarAppearance.compactAppearance = appearance
+        navigationBarAppearance.scrollEdgeAppearance = appearance
+        navigationBarAppearance.tintColor = UIColor(AppTheme.navigationBarAccentColor)
+    }
+    
+    init() {
+        applyNavigationBarAppearance()
     }
     
     var body: some Scene {
@@ -216,6 +217,8 @@ struct Morning_RoutineApp: App {
                 .environmentObject(settingsManager)
                 .preferredColorScheme(.dark)
                 .onAppear {
+                    applyNavigationBarAppearance()
+
                     // Set up dependencies
                     alarmManager.locationManager = locationManager
                     alarmManager.settingsManager = settingsManager
@@ -230,17 +233,26 @@ struct Morning_RoutineApp: App {
                     AppDelegate.routineManager = routineManager
                     AppDelegate.timerManager = timerManager
                     
-                    // Request notification permission on app launch
-                    Task {
-                        await alarmManager.requestPermission()
-                        // Schedule all alarms on app launch
-                        await alarmManager.updateAllAlarms(routines: routineManager.routines)
+                    // Only request notification permission if onboarding is already completed
+                    // Otherwise, we'll ask after onboarding finishes
+                    if OnboardingManager.shared.hasCompletedOnboarding {
+                        Task {
+                            await alarmManager.requestPermission()
+                            // Schedule all alarms on app launch
+                            await alarmManager.updateAllAlarms(routines: routineManager.routines)
+                        }
+                    } else {
+                        // Just update alarms without requesting permission
+                        Task {
+                            await alarmManager.updateAllAlarms(routines: routineManager.routines)
+                        }
                     }
                     
-                    // Update sunrise alarm times if we already have sunrise data
-                    if let sunriseTime = locationManager.sunriseTime {
-                        routineManager.updateSunriseAlarmTimes(sunriseTime: sunriseTime)
-                    }
+                    // Update sun-event alarm times if we already have location-based sun data
+                    routineManager.updateSunEventAlarmTimes(
+                        sunriseTime: locationManager.sunriseTime,
+                        sunsetTime: locationManager.sunsetTime
+                    )
                 }
                 .onChange(of: routineManager.routines) { _, newRoutines in
                     // Update alarms when routines change
@@ -256,24 +268,58 @@ struct Morning_RoutineApp: App {
                         await alarmManager.updateAllAlarms(routines: routineManager.routines)
                     }
                 }
+                .onChange(of: settingsManager.themeAccentHue) { _, _ in
+                    applyNavigationBarAppearance()
+                }
+                .onChange(of: settingsManager.themeUseGrayscale) { _, _ in
+                    applyNavigationBarAppearance()
+                }
+                .onChange(of: settingsManager.backgroundHue) { _, _ in
+                    applyNavigationBarAppearance()
+                }
+                .onChange(of: settingsManager.backgroundUseGrayscale) { _, _ in
+                    applyNavigationBarAppearance()
+                }
                 .onChange(of: locationManager.sunriseTime) { _, newSunriseTime in
                     // Update routine alarm times when sunrise time changes (e.g., new day or location change)
-                    if let sunriseTime = newSunriseTime {
-                        routineManager.updateSunriseAlarmTimes(sunriseTime: sunriseTime)
-                    }
+                    routineManager.updateSunEventAlarmTimes(
+                        sunriseTime: newSunriseTime,
+                        sunsetTime: locationManager.sunsetTime
+                    )
                     // Reschedule sunrise-based alarms when sunrise time updates
+                    Task {
+                        await alarmManager.rescheduleSunriseAlarms(routines: routineManager.routines)
+                    }
+                }
+                .onChange(of: locationManager.sunsetTime) { _, newSunsetTime in
+                    // Update routine alarm times when sunset time changes
+                    routineManager.updateSunEventAlarmTimes(
+                        sunriseTime: locationManager.sunriseTime,
+                        sunsetTime: newSunsetTime
+                    )
                     Task {
                         await alarmManager.rescheduleSunriseAlarms(routines: routineManager.routines)
                     }
                 }
                 .onChange(of: settingsManager.minutesBeforeSunrise) { _, _ in
                     // Update sunrise alarm times when the "minutes before sunrise" setting changes
-                    if let sunriseTime = locationManager.sunriseTime {
-                        routineManager.updateSunriseAlarmTimes(sunriseTime: sunriseTime)
-                        // Reschedule alarms
-                        Task {
-                            await alarmManager.rescheduleSunriseAlarms(routines: routineManager.routines)
-                        }
+                    routineManager.updateSunEventAlarmTimes(
+                        sunriseTime: locationManager.sunriseTime,
+                        sunsetTime: locationManager.sunsetTime
+                    )
+                    // Reschedule alarms
+                    Task {
+                        await alarmManager.rescheduleSunriseAlarms(routines: routineManager.routines)
+                    }
+                }
+                .onChange(of: settingsManager.minutesFromSunset) { _, _ in
+                    // Update sunset alarm times when the sunset offset setting changes
+                    routineManager.updateSunEventAlarmTimes(
+                        sunriseTime: locationManager.sunriseTime,
+                        sunsetTime: locationManager.sunsetTime
+                    )
+                    Task {
+                        await alarmManager.rescheduleSunriseAlarms(routines: routineManager.routines)
                     }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
@@ -283,8 +329,43 @@ struct Morning_RoutineApp: App {
                             timerManager.restoreTimerStateIfNeeded()
                             timerManager.syncTimerWithElapsedTime()
                         }
+                        // Check if an alarm notification was delivered while app was in background
+                        // If so, automatically open the routine
+                        Task { @MainActor in
+                            await checkForDeliveredAlarmNotifications()
+                        }
                     }
                 }
+        }
+    }
+    
+    /// Check if any alarm notifications were delivered while the app was in the background
+    /// and automatically open the routine if so
+    @MainActor
+    private func checkForDeliveredAlarmNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        
+        for notification in delivered {
+            guard notification.request.content.categoryIdentifier == "MORNING_ROUTINE_ALARM",
+                  let routineIdString = notification.request.content.userInfo["routineId"] as? String,
+                  let routineId = UUID(uuidString: routineIdString) else {
+                continue
+            }
+            
+            // Only trigger if this routine is selected and not already showing
+            guard routineManager.selectedRoutineIds.contains(routineId),
+                  let routine = routineManager.routines.first(where: { $0.id == routineId }),
+                  alarmManager.triggeredRoutine?.id != routineId else {
+                continue
+            }
+            
+            print("[App] Found delivered alarm notification for routine: \(routine.name) - opening routine")
+            alarmManager.triggeredRoutine = routine
+            
+            // Remove the delivered notification since we're handling it
+            center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
+            break // Only handle one alarm at a time
         }
     }
 }

@@ -11,8 +11,44 @@ struct RoutineExecutionView: View {
     @Binding var isPresented: Bool
     
     @State private var showingCompletion = false
+    @State private var showingCalendarEvents: Bool
+    
+    init(routine: Routine, isPresented: Binding<Bool>) {
+        self.routine = routine
+        self._isPresented = isPresented
+        // Show calendar events first if enabled for this routine
+        self._showingCalendarEvents = State(initialValue: routine.showCalendarEvents)
+    }
     
     var body: some View {
+        Group {
+            if showingCalendarEvents {
+                CalendarEventsView(routine: routine) {
+                    showingCalendarEvents = false
+                }
+            } else {
+                routineExecutionContent
+            }
+        }
+        .fullScreenCover(isPresented: $showingCompletion) {
+            CompletionView(isExecutionPresented: $isPresented)
+                .environmentObject(routineManager)
+        }
+        .onChange(of: timerManager.allActionsCompleted) { _, completed in
+            if completed {
+                showingCompletion = true
+            }
+        }
+        .onDisappear {
+            timerManager.pause()
+            routineManager.stopRoutine()
+            timerManager.stopLoudAlarm()
+        }
+    }
+    
+    // MARK: - Routine Execution Content
+    
+    private var routineExecutionContent: some View {
         ZStack {
             // Background
             AppTheme.backgroundGradient
@@ -20,26 +56,6 @@ struct RoutineExecutionView: View {
             
             // Main content
             VStack(spacing: 0) {
-                // Turn off alarm button (if alarm is beeping)
-                if alarmManager.isAlarmBeeping {
-                    Button {
-                        alarmManager.stopAlarmBeep()
-                    } label: {
-                        HStack {
-                            Image(systemName: "alarm.fill")
-                            Text("Turn Off Alarm")
-                        }
-                        .font(AppTheme.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.red)
-                        .cornerRadius(AppTheme.cornerRadius)
-                    }
-                    .padding(.horizontal, AppTheme.padding)
-                    .padding(.top, AppTheme.paddingSmall)
-                }
-                
                 // Header
                 executionHeader
                 
@@ -63,30 +79,16 @@ struct RoutineExecutionView: View {
                 Spacer()
             }
             .padding(AppTheme.padding)
+            .iPadConstrained()
             
-            // Red filter overlay (when enabled for current or next action)
-            if timerManager.shouldShowRedFilter,
-               (timerManager.isRunning || timerManager.currentActionIndex == 0) {
+            // Red filter overlay (when enabled for current action or in consecutive red filter sequence)
+            if shouldShowRedFilterOverlay {
                 Color(red: 1.0, green: 0.0, blue: 0.0)
                     .opacity(0.75)
                     .blendMode(.multiply)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
-        }
-        .fullScreenCover(isPresented: $showingCompletion) {
-            CompletionView(isExecutionPresented: $isPresented)
-                .environmentObject(routineManager)
-        }
-        .onChange(of: timerManager.allActionsCompleted) { _, completed in
-            if completed {
-                showingCompletion = true
-            }
-        }
-        .onDisappear {
-            timerManager.pause()
-            routineManager.stopRoutine()
-            timerManager.stopLoudAlarm()
         }
     }
     
@@ -118,6 +120,9 @@ struct RoutineExecutionView: View {
                 Text(routine.name)
                     .font(AppTheme.headline)
                     .foregroundColor(AppTheme.primaryText)
+                    .lineLimit(8)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.5)
                 
                 Text("Action \(timerManager.currentActionIndex + 1) of \(routine.actions.count)")
                     .font(AppTheme.caption)
@@ -140,6 +145,26 @@ struct RoutineExecutionView: View {
         return (completedActions + currentProgress) / Double(routine.actions.count)
     }
     
+    /// Whether to show the red filter overlay
+    /// Shows continuously when there are consecutive red filter actions in a row
+    private var shouldShowRedFilterOverlay: Bool {
+        let currentHasFilter = timerManager.currentAction?.useRedFilter ?? false
+        let nextHasFilter = timerManager.nextAction?.useRedFilter ?? false
+        
+        // If current action has filter, always show
+        if currentHasFilter {
+            return true
+        }
+        
+        // If next action has filter, show it to prepare the user
+        // (keeps filter on during the transition between consecutive red filter actions)
+        if nextHasFilter {
+            return true
+        }
+        
+        return false
+    }
+    
     // MARK: - Action Display
     
     private func actionDisplay(_ action: RoutineAction) -> some View {
@@ -154,11 +179,15 @@ struct RoutineExecutionView: View {
                 .font(AppTheme.largeTitle)
                 .foregroundColor(AppTheme.primaryText)
                 .multilineTextAlignment(.center)
+                .lineLimit(8)
+                .minimumScaleFactor(0.5)
             
             // Duration info
             Text("Duration: \(action.formattedDuration)")
                 .font(AppTheme.body)
                 .foregroundColor(AppTheme.secondaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
             
             // Red filter indicator
             if action.useRedFilter {

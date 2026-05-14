@@ -15,18 +15,19 @@ struct SettingsView: View {
             VStack(spacing: AppTheme.paddingLarge) {
                 // Sunrise preferences section
                 sunrisePreferencesSection
+                // Appearance section
+                appearanceSection
                 // Notifications section
                 notificationsSection
                 // Onboarding section
                 onboardingSection
-                // About section
-                aboutSection
                 // Data section
                 dataSection
                 Spacer(minLength: 50)
             }
             .padding(.horizontal, AppTheme.padding)
             .padding(.top, AppTheme.padding)
+            .iPadConstrained()
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
@@ -43,15 +44,15 @@ struct SettingsView: View {
         }
     }
     
-    // MARK: - Sunrise Preferences Section
+    // MARK: - Sun Preferences Section
     
     private var sunrisePreferencesSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-            Text("Sunrise Preferences")
+            Text("Sun Preferences")
                 .font(AppTheme.headline)
                 .foregroundColor(AppTheme.primaryText)
             
-            VStack(spacing: 0) {
+            VStack(spacing: AppTheme.paddingSmall) {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Wake Up Before Sunrise")
@@ -67,7 +68,7 @@ struct SettingsView: View {
                     
                     VStack(alignment: .trailing, spacing: 4) {
                         HStack(spacing: 8) {
-                            Button(action: { decrementMinutes() }) {
+                            Button(action: { decrementSunriseMinutes() }) {
                                 Image(systemName: "minus.circle.fill")
                                     .font(.system(size: 24))
                                     .foregroundColor(AppTheme.primaryColor)
@@ -78,7 +79,43 @@ struct SettingsView: View {
                                 .foregroundColor(AppTheme.primaryText)
                                 .frame(minWidth: 50, alignment: .center)
                             
-                            Button(action: { incrementMinutes() }) {
+                            Button(action: { incrementSunriseMinutes() }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(AppTheme.primaryColor)
+                            }
+                        }
+                    }
+                }
+                .padding()
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Look at the Sunset")
+                            .font(AppTheme.body)
+                            .foregroundColor(AppTheme.primaryText)
+
+                        Text("For 'go to bed with sun' routines")
+                            .font(AppTheme.caption)
+                            .foregroundColor(AppTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Button(action: { decrementSunsetMinutes() }) {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(AppTheme.primaryColor)
+                            }
+
+                            Text("\(settingsManager.minutesFromSunset) min")
+                                .font(AppTheme.body)
+                                .foregroundColor(AppTheme.primaryText)
+                                .frame(minWidth: 50, alignment: .center)
+
+                            Button(action: { incrementSunsetMinutes() }) {
                                 Image(systemName: "plus.circle.fill")
                                     .font(.system(size: 24))
                                     .foregroundColor(AppTheme.primaryColor)
@@ -97,15 +134,300 @@ struct SettingsView: View {
         }
     }
     
-    private func incrementMinutes() {
+    private func incrementSunriseMinutes() {
         if settingsManager.minutesBeforeSunrise < 60 {
             settingsManager.minutesBeforeSunrise += 1
         }
     }
     
-    private func decrementMinutes() {
+    private func decrementSunriseMinutes() {
         if settingsManager.minutesBeforeSunrise > -60 {
             settingsManager.minutesBeforeSunrise -= 1
+        }
+    }
+
+    private func incrementSunsetMinutes() {
+        if settingsManager.minutesFromSunset < 60 {
+            settingsManager.minutesFromSunset += 1
+        }
+    }
+
+    private func decrementSunsetMinutes() {
+        if settingsManager.minutesFromSunset > -60 {
+            settingsManager.minutesFromSunset -= 1
+        }
+    }
+
+    // MARK: - Appearance Section
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
+            Text("Appearance")
+                .font(AppTheme.headline)
+                .foregroundColor(AppTheme.primaryText)
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Use Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
+                    Spacer()
+
+                    Toggle("", isOn: $settingsManager.themeUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
+                }
+
+                HStack {
+                    Text("Theme Color")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(AppTheme.primaryColor)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.themeAccentHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: settingsManager.themeUseGrayscale
+                                        ? [
+                                            Color(white: 0.0),
+                                            Color(white: 1.0)
+                                        ]
+                                        : stride(from: 0.0, through: 1.0, by: 0.1).map {
+                                            Color(hue: $0, saturation: 0.95, brightness: 1.0)
+                                        },
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
+                        Circle()
+                            .fill(AppTheme.primaryColor)
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
+                    }
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.themeAccentHue = norm
+                        }
+                    )
+                }
+                .frame(height: 30)
+
+                Text("Drag to choose any color")
+                    .font(AppTheme.caption)
+                    .foregroundColor(AppTheme.secondaryText)
+
+                Divider().background(AppTheme.borderColor.opacity(0.6))
+
+                HStack {
+                    Text("Background Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
+                    Spacer()
+
+                    Toggle("", isOn: $settingsManager.backgroundUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
+                }
+
+                HStack {
+                    Text("Background Color")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(
+                            settingsManager.backgroundUseGrayscale
+                                ? Color(white: settingsManager.backgroundHue)
+                                : Color(hue: settingsManager.backgroundHue, saturation: 0.50, brightness: 0.26)
+                        )
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.backgroundHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: settingsManager.backgroundUseGrayscale
+                                        ? [
+                                            Color(white: 0.0),
+                                            Color(white: 1.0)
+                                        ]
+                                        : stride(from: 0.0, through: 1.0, by: 0.1).map {
+                                            Color(hue: $0, saturation: 0.95, brightness: 1.0)
+                                        },
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
+                        Circle()
+                            .fill(
+                                settingsManager.backgroundUseGrayscale
+                                    ? Color(white: settingsManager.backgroundHue)
+                                    : Color(hue: settingsManager.backgroundHue, saturation: 0.95, brightness: 1.0)
+                            )
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
+                    }
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.backgroundHue = norm
+                        }
+                    )
+                }
+                .frame(height: 30)
+
+                Text("Drag to choose a background color")
+                    .font(AppTheme.caption)
+                    .foregroundColor(AppTheme.secondaryText)
+
+                Divider().background(AppTheme.borderColor.opacity(0.6))
+
+                HStack {
+                    Text("Box Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
+                    Spacer()
+
+                    Toggle("", isOn: $settingsManager.boxBackgroundUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
+                }
+
+                HStack {
+                    Text("Box Background")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(AppTheme.boxPreviewColor(
+                            hue: settingsManager.boxBackgroundHue,
+                            useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                        ))
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.boxBackgroundHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: AppTheme.boxSliderColors(
+                                        useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                                    ),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
+                        Circle()
+                            .fill(AppTheme.boxPreviewColor(
+                                hue: settingsManager.boxBackgroundHue,
+                                useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                            ))
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
+                    }
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.boxBackgroundHue = norm
+                        }
+                    )
+                }
+                .frame(height: 30)
+
+                Text("Drag to choose box/card background color")
+                    .font(AppTheme.caption)
+                    .foregroundColor(AppTheme.secondaryText)
+
+                Button {
+                    resetAppearanceDefaults()
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reset Appearance to Defaults")
+                        Spacer()
+                    }
+                    .font(AppTheme.body)
+                    .foregroundColor(AppTheme.primaryText)
+                    .padding(.top, 4)
+                }
+            }
+            .padding()
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .stroke(AppTheme.borderColor, lineWidth: AppTheme.borderWidth)
+            )
         }
     }
     
@@ -210,45 +532,6 @@ struct SettingsView: View {
         }
     }
     
-    // MARK: - About Section
-    
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-            Text("About")
-                .font(AppTheme.headline)
-                .foregroundColor(AppTheme.primaryText)
-            
-            VStack(spacing: 0) {
-                aboutRow(label: "App Version", value: "1.0.0")
-                Divider().background(AppTheme.borderColor).padding(.leading, 16)
-                aboutRow(label: "Build", value: "1")
-                Divider().background(AppTheme.borderColor).padding(.leading, 16)
-                aboutRow(label: "Developer", value: "Routine Hub Team")
-            }
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.borderColor, lineWidth: AppTheme.borderWidth)
-            )
-        }
-    }
-    
-    private func aboutRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(AppTheme.body)
-                .foregroundColor(AppTheme.primaryText)
-            
-            Spacer()
-            
-            Text(value)
-                .font(AppTheme.body)
-                .foregroundColor(AppTheme.secondaryText)
-        }
-        .padding()
-    }
-    
     // MARK: - Data Section
     
     private var dataSection: some View {
@@ -317,6 +600,15 @@ struct SettingsView: View {
         
         // Cancel all alarms
         alarmManager.cancelAllAlarms()
+    }
+
+    private func resetAppearanceDefaults() {
+        settingsManager.themeUseGrayscale = AppTheme.defaultThemeUseGrayscale
+        settingsManager.themeAccentHue = AppTheme.defaultThemeAccentHue
+        settingsManager.backgroundUseGrayscale = AppTheme.defaultBackgroundUseGrayscale
+        settingsManager.backgroundHue = AppTheme.defaultBackgroundHue
+        settingsManager.boxBackgroundUseGrayscale = AppTheme.defaultBoxBackgroundUseGrayscale
+        settingsManager.boxBackgroundHue = AppTheme.defaultBoxBackgroundHue
     }
 }
 

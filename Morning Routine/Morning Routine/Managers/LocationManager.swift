@@ -9,11 +9,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var userLocation: CLLocationCoordinate2D?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var sunriseTime: Date?
+    @Published var sunsetTime: Date?
     @Published var errorMessage: String?
     @Published var cityName: String?
     
-    /// The last date for which sunrise was calculated (to detect day changes)
-    private var lastSunriseCalculationDate: Date?
+    /// The last date for which sun events were calculated (to detect day changes)
+    private var lastSunEventsCalculationDate: Date?
     
     /// Timer for checking if a new day has started
     private var midnightCheckTimer: Timer?
@@ -44,7 +45,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.checkAndRecalculateSunriseIfNeeded()
+                self?.checkAndRecalculateSunEventsIfNeeded()
             }
         }
     }
@@ -60,7 +61,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Check every minute to see if we've crossed into a new day
         midnightCheckTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.checkAndRecalculateSunriseIfNeeded()
+                self?.checkAndRecalculateSunEventsIfNeeded()
             }
         }
         
@@ -70,32 +71,32 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    /// Check if we need to recalculate sunrise for a new day
-    func checkAndRecalculateSunriseIfNeeded() {
+    /// Check if we need to recalculate sun events for a new day
+    func checkAndRecalculateSunEventsIfNeeded() {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         
         // Check if we have a location and if the day has changed
         guard let location = userLocation else {
-            print("[LocationManager] No location available for sunrise recalculation")
+            print("[LocationManager] No location available for sun-event recalculation")
             return
         }
         
-        if let lastDate = lastSunriseCalculationDate {
+        if let lastDate = lastSunEventsCalculationDate {
             let lastDay = calendar.startOfDay(for: lastDate)
             if lastDay < today {
-                print("[LocationManager] 🌅 New day detected! Recalculating sunrise time...")
-                recalculateSunrise(for: location)
+                print("[LocationManager] 🌅🌇 New day detected! Recalculating sunrise/sunset times...")
+                recalculateSunEvents(for: location)
             }
         } else {
             // No previous calculation, calculate now
-            print("[LocationManager] 🌅 First sunrise calculation of the day...")
-            recalculateSunrise(for: location)
+            print("[LocationManager] 🌅🌇 First sunrise/sunset calculation of the day...")
+            recalculateSunEvents(for: location)
         }
     }
     
-    /// Recalculate sunrise time for current location
-    private func recalculateSunrise(for coordinate: CLLocationCoordinate2D) {
+    /// Recalculate sun event times for current location
+    private func recalculateSunEvents(for coordinate: CLLocationCoordinate2D) {
         if let newSunrise = calculateSunrise(for: coordinate) {
             let formatter = DateFormatter()
             formatter.timeStyle = .short
@@ -103,8 +104,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("[LocationManager] 🌅 Updated sunrise time: \(formatter.string(from: newSunrise))")
             
             sunriseTime = newSunrise
-            lastSunriseCalculationDate = Date()
         }
+
+        if let newSunset = calculateSunset(for: coordinate) {
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            formatter.dateStyle = .medium
+            print("[LocationManager] 🌇 Updated sunset time: \(formatter.string(from: newSunset))")
+
+            sunsetTime = newSunset
+        }
+
+        lastSunEventsCalculationDate = Date()
     }
     
     /// Request location permissions from the user
@@ -164,6 +175,24 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let sunrise = calculateSunriseApproximation(for: today, location: location)
         return sunrise
     }
+
+    /// Calculate sunset time for given coordinates
+    func calculateSunset(for coordinate: CLLocationCoordinate2D) -> Date? {
+        let calendar = Calendar.current
+        let now = Date()
+
+        var components = DateComponents()
+        components.year = calendar.component(.year, from: now)
+        components.month = calendar.component(.month, from: now)
+        components.day = calendar.component(.day, from: now)
+        components.timeZone = TimeZone.autoupdatingCurrent
+
+        guard let today = calendar.date(from: components) else { return nil }
+
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let sunset = calculateSunsetApproximation(for: today, location: location)
+        return sunset
+    }
     
     /// Simple sunrise calculation (approximation)
     private func calculateSunriseApproximation(for date: Date, location: CLLocation) -> Date? {
@@ -213,9 +242,53 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         return sunriseTime
     }
+
+    /// Simple sunset calculation (approximation)
+    private func calculateSunsetApproximation(for date: Date, location: CLLocation) -> Date? {
+        let calendar = Calendar.current
+        let latitude = location.coordinate.latitude
+        let longitude = location.coordinate.longitude
+        let timeZoneOffset = TimeZone.current.secondsFromGMT() / 3600
+
+        let dayOfYear = calendar.ordinality(of: .day, in: .year, for: date) ?? 1
+        let B = (Double(dayOfYear) - 81.0) * 360.0 / 365.0
+        let B_rad = B * .pi / 180.0
+
+        let eot = 9.87 * sin(2 * B_rad) - 7.53 * cos(B_rad) - 1.5 * sin(B_rad)
+        let decl = 23.44 * sin(B_rad)
+        let decl_rad = decl * .pi / 180.0
+
+        let lat_rad = latitude * .pi / 180.0
+        let cosH = -tan(lat_rad) * tan(decl_rad)
+
+        guard cosH >= -1 && cosH <= 1 else {
+            return calendar.date(bySettingHour: 18, minute: 0, second: 0, of: date)
+        }
+
+        let H = acos(cosH) * 180.0 / .pi
+        let sunsetHours = (720.0 - 4.0 * (longitude - H) - eot + Double(timeZoneOffset) * 60.0) / 60.0
+
+        let hours = Int(sunsetHours)
+        let minutes = Int((sunsetHours - Double(hours)) * 60)
+
+        let sunsetTime = calendar.date(bySettingHour: max(0, min(23, hours)), minute: max(0, min(59, minutes)), second: 0, of: date)
+
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        let sunsetString = sunsetTime.map { formatter.string(from: $0) } ?? "Unknown"
+        print("[LocationManager] 📊 SUNSET CALCULATION DEBUG:")
+        print("[LocationManager]    Latitude: \(latitude)")
+        print("[LocationManager]    Longitude: \(longitude)")
+        print("[LocationManager]    Day of year: \(dayOfYear)")
+        print("[LocationManager]    Timezone offset: \(timeZoneOffset) hours")
+        print("[LocationManager]    Calculated sunset hours: \(String(format: "%.2f", sunsetHours))")
+        print("[LocationManager]    Sunset time: \(sunsetString)")
+
+        return sunsetTime
+    }
     
     /// Reverse geocode location to get city name
-    private func reverseGeocodeLocation(_ location: CLLocation, capturedSunriseTime: Date?) {
+    private func reverseGeocodeLocation(_ location: CLLocation, capturedSunriseTime: Date?, capturedSunsetTime: Date?) {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
         let latString = String(format: "%.4f", lat)
@@ -227,6 +300,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         sunriseFormatter.timeStyle = .short
         sunriseFormatter.dateStyle = .none
         let sunriseString = capturedSunriseTime.map { sunriseFormatter.string(from: $0) } ?? "Unknown"
+
+        let sunsetFormatter = DateFormatter()
+        sunsetFormatter.timeStyle = .short
+        sunsetFormatter.dateStyle = .none
+        let sunsetString = capturedSunsetTime.map { sunsetFormatter.string(from: $0) } ?? "Unknown"
         
         // Use MKLocalSearch to get city name
         Task {
@@ -247,11 +325,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                         print("🌍 [LocationManager] Coordinates: \(locationString)")
                         print("📍 [LocationManager] Latitude: \(lat), Longitude: \(lon)")
                         print("🌅 [LocationManager] Sunrise time: \(sunriseString)")
+                        print("🌇 [LocationManager] Sunset time: \(sunsetString)")
                     } else {
                         self.cityName = locationString
                         print("🌍 [LocationManager] Location: \(locationString)")
                         print("📍 [LocationManager] Latitude: \(lat), Longitude: \(lon)")
                         print("🌅 [LocationManager] Sunrise time: \(sunriseString)")
+                        print("🌇 [LocationManager] Sunset time: \(sunsetString)")
                     }
                 }
             } catch {
@@ -260,6 +340,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     print("🌍 [LocationManager] Location: \(locationString) (search failed: \(error.localizedDescription))")
                     print("📍 [LocationManager] Latitude: \(lat), Longitude: \(lon)")
                     print("🌅 [LocationManager] Sunrise time: \(sunriseString)")
+                    print("🌇 [LocationManager] Sunset time: \(sunsetString)")
                 }
             }
         }
@@ -274,14 +355,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("[LocationManager] Latest location: lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude)")
         userLocation = location.coordinate
         
-        // Calculate sunrise time
+        // Calculate sunrise/sunset times
         let calculatedSunrise = calculateSunrise(for: location.coordinate)
+        let calculatedSunset = calculateSunset(for: location.coordinate)
         sunriseTime = calculatedSunrise
-        lastSunriseCalculationDate = Date()
+        sunsetTime = calculatedSunset
+        lastSunEventsCalculationDate = Date()
         print("[LocationManager] Sunrise calculated: \(calculatedSunrise?.formatted() ?? "nil")")
+        print("[LocationManager] Sunset calculated: \(calculatedSunset?.formatted() ?? "nil")")
         
         // Reverse geocode to get city name using MapKit
-        reverseGeocodeLocation(location, capturedSunriseTime: calculatedSunrise)
+        reverseGeocodeLocation(location, capturedSunriseTime: calculatedSunrise, capturedSunsetTime: calculatedSunset)
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

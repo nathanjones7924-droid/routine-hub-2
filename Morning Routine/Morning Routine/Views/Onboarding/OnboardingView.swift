@@ -1,12 +1,14 @@
 import SwiftUI
 import Combine
+import UserNotifications
 
 /// Onboarding view shown to first-time users
 struct OnboardingView: View {
     @Binding var isPresented: Bool
+    @EnvironmentObject var settingsManager: SettingsManager
     @State private var currentPage = 0
     
-    private let totalPages = 5
+    private let totalPages = 7
     
     var body: some View {
         ZStack {
@@ -31,17 +33,25 @@ struct OnboardingView: View {
                     welcomePage.tag(0)
                     createRoutinePage.tag(1)
                     alarmPage.tag(2)
-                    timerPage.tag(3)
-                    selectRoutinePage.tag(4)
+                    actionFeaturesPage.tag(3)
+                    calendarPage.tag(4)
+                    timerPage.tag(5)
+                    themePickerPage.tag(6)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .iPadConstrained()
                 
                 // Page indicators
                 HStack(spacing: 8) {
                     ForEach(0..<totalPages, id: \.self) { index in
                         Circle()
-                            .fill(index == currentPage ? AppTheme.primaryColor : AppTheme.borderColor)
-                            .frame(width: 8, height: 8)
+                            .fill(index == currentPage ? AppTheme.primaryColor : AppTheme.borderColor.opacity(0.35))
+                            .frame(width: index == currentPage ? 14 : 8, height: index == currentPage ? 14 : 8)
+                            .overlay(
+                                Circle()
+                                    .stroke(index == currentPage ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2)
+                            )
+                            .shadow(color: index == currentPage ? AppTheme.primaryColor.opacity(0.55) : .clear, radius: 6)
                             .animation(.easeInOut(duration: 0.2), value: currentPage)
                     }
                 }
@@ -81,7 +91,7 @@ struct OnboardingView: View {
                                 currentPage += 1
                             }
                         } else {
-                            completeOnboarding()
+                            completeOnboarding(askPermission: true)
                         }
                     } label: {
                         HStack {
@@ -133,6 +143,13 @@ struct OnboardingView: View {
                 .foregroundColor(AppTheme.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
+            
+            Text("Alarms only go off when your phone is on Ring")
+                .font(AppTheme.headline)
+                .fontWeight(.bold)
+                .foregroundColor(AppTheme.primaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
             
             Spacer()
             Spacer()
@@ -233,6 +250,12 @@ struct OnboardingView: View {
                 .font(AppTheme.caption)
                 .foregroundColor(AppTheme.secondaryText)
             
+            Text("Make sure your phone is on Ring for alarm notifications to play sound")
+                .font(AppTheme.caption)
+                .foregroundColor(AppTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            
             // Mock alarm settings
             VStack(spacing: 16) {
                 // Alarm toggle
@@ -307,7 +330,227 @@ struct OnboardingView: View {
         .padding(.top, 40)
     }
     
-    // MARK: - Page 4: Timer
+    // MARK: - Page 4: Action Features
+    
+    private var actionFeaturesPage: some View {
+        VStack(spacing: 16) {
+            Text("Customize Your Actions")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(AppTheme.primaryText)
+            
+            Text("Each action has powerful options")
+                .font(AppTheme.caption)
+                .foregroundColor(AppTheme.secondaryText)
+            
+            VStack(spacing: 12) {
+                // Loud Alarm feature
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.2))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.red)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Loud Alarm")
+                            .font(AppTheme.headline)
+                            .foregroundColor(AppTheme.primaryText)
+                        Text("Get a loud alert when action ends")
+                            .font(AppTheme.caption)
+                            .foregroundColor(AppTheme.secondaryText)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+                
+                // Red Filter feature
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.2))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "eye.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.red)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Red Light Filter")
+                            .font(AppTheme.headline)
+                            .foregroundColor(AppTheme.primaryText)
+                        Text("Protect your eyes in early morning")
+                            .font(AppTheme.caption)
+                            .foregroundColor(AppTheme.secondaryText)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+                
+                // Duration feature
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.primaryColor.opacity(0.2))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "timer")
+                            .font(.system(size: 20))
+                            .foregroundColor(AppTheme.primaryColor)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Custom Duration")
+                            .font(AppTheme.headline)
+                            .foregroundColor(AppTheme.primaryText)
+                        Text("Set hours, minutes, or seconds")
+                            .font(AppTheme.caption)
+                            .foregroundColor(AppTheme.secondaryText)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+            }
+            .padding()
+            .background(AppTheme.elevatedBackground.opacity(0.5))
+            .cornerRadius(20)
+            .padding(.horizontal)
+            
+            Spacer()
+        }
+        .padding(.top, 40)
+    }
+    
+    // MARK: - Page 5: Calendar
+    
+    private var calendarPage: some View {
+        VStack(spacing: 16) {
+            Text("See Your Day Ahead")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(AppTheme.primaryText)
+            
+            Text("View calendar events before starting")
+                .font(AppTheme.caption)
+                .foregroundColor(AppTheme.secondaryText)
+            
+            VStack(spacing: 16) {
+                // Calendar toggle mockup
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 24))
+                        .foregroundColor(AppTheme.primaryColor)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show Calendar Events")
+                            .font(AppTheme.body)
+                            .foregroundColor(AppTheme.primaryText)
+                        Text("Enable in routine settings")
+                            .font(AppTheme.caption)
+                            .foregroundColor(AppTheme.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    // Mock toggle ON
+                    ZStack {
+                        Capsule()
+                            .fill(AppTheme.primaryColor)
+                            .frame(width: 50, height: 30)
+                        
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 26, height: 26)
+                            .offset(x: 10)
+                    }
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+                
+                // Mock calendar events
+                VStack(spacing: 8) {
+                    Text("Today's Events")
+                        .font(AppTheme.headline)
+                        .foregroundColor(AppTheme.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.blue)
+                            .frame(width: 4, height: 40)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Team Meeting")
+                                .font(AppTheme.body)
+                                .foregroundColor(AppTheme.primaryText)
+                            Text("9:00 AM - 10:00 AM")
+                                .font(AppTheme.caption)
+                                .foregroundColor(AppTheme.secondaryText)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(AppTheme.elevatedBackground)
+                    .cornerRadius(8)
+                    
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.green)
+                            .frame(width: 4, height: 40)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Lunch with Sarah")
+                                .font(AppTheme.body)
+                                .foregroundColor(AppTheme.primaryText)
+                            Text("12:30 PM - 1:30 PM")
+                                .font(AppTheme.caption)
+                                .foregroundColor(AppTheme.secondaryText)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(AppTheme.elevatedBackground)
+                    .cornerRadius(8)
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+                
+                // Explanation
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(AppTheme.primaryColor)
+                    Text("Review your schedule, then start your routine")
+                        .font(AppTheme.caption)
+                        .foregroundColor(AppTheme.secondaryText)
+                }
+                .padding()
+                .background(AppTheme.primaryColor.opacity(0.1))
+                .cornerRadius(12)
+            }
+            .padding()
+            .background(AppTheme.elevatedBackground.opacity(0.5))
+            .cornerRadius(20)
+            .padding(.horizontal)
+            
+            Spacer()
+        }
+        .padding(.top, 40)
+    }
+    
+    // MARK: - Page 6: Timer
     
     private var timerPage: some View {
         VStack(spacing: 16) {
@@ -399,118 +642,318 @@ struct OnboardingView: View {
         .padding(.top, 40)
     }
     
-    // MARK: - Page 5: Select Routines
+    // MARK: - Page 7: Appearance
     
-    private var selectRoutinePage: some View {
-        VStack(spacing: 16) {
-            Text("Select Your Routines")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(AppTheme.primaryText)
-            
-            Text("Tap the circle to select which routines are active")
-                .font(AppTheme.caption)
-                .foregroundColor(AppTheme.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            // Mock routine list
-            VStack(spacing: 12) {
-                // Selected routine
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .stroke(AppTheme.primaryColor, lineWidth: 2)
-                            .frame(width: 24, height: 24)
+    private var themePickerPage: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 16) {
+                Text("Customize Appearance")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(AppTheme.primaryText)
+                
+                Text("Theme, background, and box colors can all be customized in Settings")
+                    .font(AppTheme.caption)
+                    .foregroundColor(AppTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                // Appearance controls preview
+                VStack(spacing: 12) {
+                HStack {
+                    Text("Use Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
+                    Spacer()
+
+                    Toggle("", isOn: $settingsManager.themeUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
+                }
+
+                HStack {
+                    Text("Theme Color")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(AppTheme.primaryColor)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+                .padding()
+                .background(AppTheme.cardBackground)
+                .cornerRadius(12)
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.themeAccentHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: settingsManager.themeUseGrayscale
+                                        ? [
+                                            Color(white: 0.0),
+                                            Color(white: 1.0)
+                                        ]
+                                        : stride(from: 0.0, through: 1.0, by: 0.1).map {
+                                            Color(hue: $0, saturation: 0.95, brightness: 1.0)
+                                        },
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
                         Circle()
                             .fill(AppTheme.primaryColor)
-                            .frame(width: 16, height: 16)
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
                     }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Morning Workout")
-                            .font(AppTheme.headline)
-                            .foregroundColor(AppTheme.primaryText)
-                        Text("6:00 AM • 3 actions")
-                            .font(AppTheme.caption)
-                            .foregroundColor(AppTheme.secondaryText)
-                    }
-                    
-                    Spacer()
-                    
-                    Text("✓ Selected")
-                        .font(AppTheme.caption)
-                        .foregroundColor(AppTheme.primaryColor)
-                        .fontWeight(.semibold)
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.themeAccentHue = norm
+                        }
+                    )
                 }
-                .padding()
-                .background(AppTheme.cardBackground)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppTheme.primaryColor, lineWidth: 2)
-                )
-                
-                // Arrow pointing to circle
+                .frame(height: 30)
+                .padding(.horizontal, 8)
+
                 HStack {
-                    Image(systemName: "arrow.up.left")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(AppTheme.primaryColor)
-                    Text("Tap circle to select/deselect")
-                        .font(AppTheme.caption)
-                        .foregroundColor(AppTheme.primaryColor)
-                        .fontWeight(.semibold)
+                    Text("Background Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
                     Spacer()
+
+                    Toggle("", isOn: $settingsManager.backgroundUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
                 }
-                .padding(.leading, 8)
-                
-                // Unselected routine
-                HStack(spacing: 12) {
+
+                HStack {
+                    Text("Background Color")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
                     Circle()
-                        .stroke(AppTheme.primaryColor, lineWidth: 2)
+                        .fill(
+                            settingsManager.backgroundUseGrayscale
+                                ? Color(white: settingsManager.backgroundHue)
+                                : Color(hue: settingsManager.backgroundHue, saturation: 0.95, brightness: 1.0)
+                        )
                         .frame(width: 24, height: 24)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Evening Routine")
-                            .font(AppTheme.headline)
-                            .foregroundColor(AppTheme.primaryText)
-                        Text("9:00 PM • 5 actions")
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.backgroundHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: settingsManager.backgroundUseGrayscale
+                                        ? [
+                                            Color(white: 0.0),
+                                            Color(white: 1.0)
+                                        ]
+                                        : stride(from: 0.0, through: 1.0, by: 0.1).map {
+                                            Color(hue: $0, saturation: 0.95, brightness: 1.0)
+                                        },
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
+                        Circle()
+                            .fill(
+                                settingsManager.backgroundUseGrayscale
+                                    ? Color(white: settingsManager.backgroundHue)
+                                    : Color(hue: settingsManager.backgroundHue, saturation: 0.95, brightness: 1.0)
+                            )
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
+                    }
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.backgroundHue = norm
+                        }
+                    )
+                }
+                .frame(height: 30)
+                .padding(.horizontal, 8)
+
+                HStack {
+                    Text("Box Grayscale")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.controlTextColor)
+
+                    Spacer()
+
+                    Toggle("", isOn: $settingsManager.boxBackgroundUseGrayscale)
+                        .labelsHidden()
+                        .toggleStyle(AppThemeToggleStyle())
+                }
+
+                HStack {
+                    Text("Box Background")
+                        .font(AppTheme.body)
+                        .foregroundColor(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(AppTheme.boxPreviewColor(
+                            hue: settingsManager.boxBackgroundHue,
+                            useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                        ))
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.borderColor, lineWidth: 2)
+                        )
+                }
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let knobX = settingsManager.boxBackgroundHue * width
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: AppTheme.boxSliderColors(
+                                        useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                                    ),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 22)
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.borderColor, lineWidth: 1)
+                            )
+
+                        Circle()
+                            .fill(AppTheme.boxPreviewColor(
+                                hue: settingsManager.boxBackgroundHue,
+                                useGrayscale: settingsManager.boxBackgroundUseGrayscale
+                            ))
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .position(x: min(max(knobX, 0), width), y: geometry.size.height / 2)
+                    }
+                    .overlay(
+                        HorizontalDragOverlay { norm in
+                            settingsManager.boxBackgroundHue = norm
+                        }
+                    )
+                }
+                .frame(height: 30)
+                .padding(.horizontal, 8)
+
+                Button {
+                    resetAppearanceDefaults()
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reset Appearance to Defaults")
+                        Spacer()
+                    }
+                    .font(AppTheme.body)
+                    .foregroundColor(AppTheme.primaryText)
+                    .padding(.top, 4)
+                }
+                
+                    // Explanation
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(AppTheme.primaryColor)
+                        Text("These controls are also in Settings → Appearance")
                             .font(AppTheme.caption)
                             .foregroundColor(AppTheme.secondaryText)
                     }
-                    
-                    Spacer()
+                    .padding()
+                    .background(AppTheme.primaryColor.opacity(0.1))
+                    .cornerRadius(12)
                 }
                 .padding()
-                .background(AppTheme.cardBackground)
-                .cornerRadius(12)
-                
-                // Explanation
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundColor(AppTheme.primaryColor)
-                    Text("Only selected routines will trigger alarms")
-                        .font(AppTheme.caption)
-                        .foregroundColor(AppTheme.secondaryText)
-                }
+                .background(AppTheme.elevatedBackground.opacity(0.5))
+                .cornerRadius(20)
+                .padding(.horizontal)
                 .padding()
-                .background(AppTheme.primaryColor.opacity(0.1))
-                .cornerRadius(12)
+                .padding(.bottom, 40)
             }
-            .padding()
-            .background(AppTheme.elevatedBackground.opacity(0.5))
-            .cornerRadius(20)
-            .padding(.horizontal)
-            
-            Spacer()
         }
-        .padding(.top, 40)
+        .padding(.top, 20)
     }
     
-    private func completeOnboarding() {
+    private func completeOnboarding(askPermission: Bool = false) {
         OnboardingManager.shared.completeOnboarding()
+        
         withAnimation {
             isPresented = false
         }
+        
+        if askPermission {
+            // Request notification permission after onboarding view is dismissed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                    if let error = error {
+                        print("[OnboardingView] Notification permission error: \(error.localizedDescription)")
+                    } else {
+                        print("[OnboardingView] Notification permission granted: \(granted)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func resetAppearanceDefaults() {
+        settingsManager.themeUseGrayscale = AppTheme.defaultThemeUseGrayscale
+        settingsManager.themeAccentHue = AppTheme.defaultThemeAccentHue
+        settingsManager.backgroundUseGrayscale = AppTheme.defaultBackgroundUseGrayscale
+        settingsManager.backgroundHue = AppTheme.defaultBackgroundHue
+        settingsManager.boxBackgroundUseGrayscale = AppTheme.defaultBoxBackgroundUseGrayscale
+        settingsManager.boxBackgroundHue = AppTheme.defaultBoxBackgroundHue
     }
 }
 
@@ -540,4 +983,5 @@ final class OnboardingManager: ObservableObject {
 
 #Preview {
     OnboardingView(isPresented: .constant(true))
+        .environmentObject(SettingsManager())
 }

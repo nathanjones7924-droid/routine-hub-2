@@ -127,6 +127,7 @@ struct CompletionView: View {
                 .animation(.easeIn(duration: 0.5).delay(0.7), value: showConfetti)
             }
             .padding(AppTheme.padding)
+            .iPadConstrained()
         }
         .onAppear {
             withAnimation {
